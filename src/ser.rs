@@ -1,6 +1,6 @@
 use crate::error::{Error, Result};
 use serde::{Serialize, ser};
-use std::{collections::HashMap, io::Write};
+use std::io::Write;
 
 pub struct Serializer<W> {
     writer: W,
@@ -26,77 +26,51 @@ impl<W: Write> ser::Serializer for &mut Serializer<W> {
 
     type SerializeSeq = Self;
     type SerializeStruct = Self;
+    type SerializeMap = Self;
+
     type SerializeTuple = ser::Impossible<(), Self::Error>;
     type SerializeTupleStruct = ser::Impossible<(), Self::Error>;
     type SerializeTupleVariant = ser::Impossible<(), Self::Error>;
-    type SerializeMap = Self;
     type SerializeStructVariant = ser::Impossible<(), Self::Error>;
 
     fn serialize_bool(self, v: bool) -> Result<()> {
-        let tag = self.next_tag.take().unwrap_or(0);
         if !v {
-            self.write_head(tag, 12)?;
+            self.write_number(0)
         } else {
-            self.write_head(tag, 0)?;
-            self.writer.write_all(&[1])?;
+            self.write_number(1)
         }
-        Ok(())
     }
 
     fn serialize_i8(self, v: i8) -> Result<()> {
-        let tag = self.next_tag.take().unwrap_or(0);
-        self.write_head(tag, 0x0)?;
-        self.writer.write_all(&v.to_be_bytes())?;
-        Ok(())
+        self.write_number(v as i64)
     }
 
     fn serialize_i16(self, v: i16) -> Result<()> {
-        let tag = self.next_tag.take().unwrap_or(0);
-        self.write_head(tag, 0x1)?;
-        self.writer.write_all(&v.to_be_bytes())?;
-        Ok(())
+        self.write_number(v as i64)
     }
 
     fn serialize_i32(self, v: i32) -> Result<()> {
-        let tag = self.next_tag.take().unwrap_or(0);
-        self.write_head(tag, 0x2)?;
-        self.writer.write_all(&v.to_be_bytes())?;
-        Ok(())
+        self.write_number(v as i64)
     }
 
     fn serialize_i64(self, v: i64) -> Result<()> {
-        let tag = self.next_tag.take().unwrap_or(0);
-        self.write_head(tag, 0x3)?;
-        self.writer.write_all(&v.to_be_bytes())?;
-        Ok(())
+        self.write_number(v)
     }
 
     fn serialize_u8(self, v: u8) -> Result<()> {
-        let tag = self.next_tag.take().unwrap_or(0);
-        self.write_head(tag, 0x0)?;
-        self.writer.write_all(&v.to_be_bytes())?;
-        Ok(())
+        self.write_number(v as i64)
     }
 
     fn serialize_u16(self, v: u16) -> Result<()> {
-        let tag = self.next_tag.take().unwrap_or(0);
-        self.write_head(tag, 0x1)?;
-        self.writer.write_all(&v.to_be_bytes())?;
-        Ok(())
+        self.write_number(v as i64)
     }
 
     fn serialize_u32(self, v: u32) -> Result<()> {
-        let tag = self.next_tag.take().unwrap_or(0);
-        self.write_head(tag, 0x2)?;
-        self.writer.write_all(&v.to_be_bytes())?;
-        Ok(())
+        self.write_number(v as i64)
     }
 
     fn serialize_u64(self, v: u64) -> Result<()> {
-        let tag = self.next_tag.take().unwrap_or(0);
-        self.write_head(tag, 0x3)?;
-        self.writer.write_all(&v.to_be_bytes())?;
-        Ok(())
+        self.write_number(v as i64)
     }
 
     fn serialize_f32(self, v: f32) -> Result<()> {
@@ -115,8 +89,7 @@ impl<W: Write> ser::Serializer for &mut Serializer<W> {
 
     fn serialize_char(self, v: char) -> Result<()> {
         // 此处将char视作数字
-        let code_point = v as u32;
-        self.serialize_u32(code_point)
+        self.write_number(v as i64)
     }
 
     fn serialize_str(self, v: &str) -> Result<()> {
@@ -146,6 +119,37 @@ impl<W: Write> ser::Serializer for &mut Serializer<W> {
         self.writer.write_all(v)?;
         Ok(())
     }
+    fn serialize_seq(self, len: Option<usize>) -> Result<Self> {
+        let tag = self.next_tag.take().unwrap_or(0);
+        self.write_head(tag, 0x9)?;
+        self.next_tag = Some(0);
+        self.write_number(len.unwrap_or(0) as i64)?;
+        self.index = 0;
+        Ok(self)
+    }
+    fn serialize_map(self, len: Option<usize>) -> Result<Self::SerializeMap> {
+        let tag = self.next_tag.take().unwrap_or(0);
+        self.write_head(tag, 0x8)?;
+        self.next_tag = Some(0);
+        self.write_number(len.unwrap() as i64)?;
+        Ok(self)
+    }
+    fn serialize_struct(self, _name: &'static str, _len: usize) -> Result<Self::SerializeStruct> {
+        self.depth += 1;
+        if let Some(tag) = self.next_tag {
+            self.write_head(tag, 0xA)?
+        }
+        Ok(self)
+    }
+    fn serialize_struct_variant(
+        self,
+        _: &'static str,
+        _: u32,
+        _: &'static str,
+        _: usize,
+    ) -> Result<Self::SerializeStructVariant> {
+        todo!()
+    }
     fn serialize_none(self) -> Result<()> {
         todo!()
     }
@@ -173,14 +177,6 @@ impl<W: Write> ser::Serializer for &mut Serializer<W> {
     ) -> Result<()> {
         todo!()
     }
-    fn serialize_seq(self, len: Option<usize>) -> Result<Self> {
-        let tag = self.next_tag.take().unwrap_or(0);
-        self.write_head(tag, 0x9)?;
-        self.next_tag = Some(0);
-        self.write_number(len.unwrap_or(0) as i64)?;
-        self.index = 0;
-        Ok(self)
-    }
     fn serialize_tuple(self, _: usize) -> Result<Self::SerializeTuple> {
         todo!()
     }
@@ -198,29 +194,6 @@ impl<W: Write> ser::Serializer for &mut Serializer<W> {
         _: &'static str,
         _: usize,
     ) -> Result<Self::SerializeTupleVariant> {
-        todo!()
-    }
-    fn serialize_map(self, len: Option<usize>) -> Result<Self::SerializeMap> {
-        let tag = self.next_tag.take().unwrap_or(0);
-        self.write_head(tag, 0x8)?;
-        self.next_tag = Some(0);
-        self.write_number(len.unwrap() as i64)?;
-        Ok(self)
-    }
-    fn serialize_struct(self, _name: &'static str, _len: usize) -> Result<Self::SerializeStruct> {
-        self.depth += 1;
-        if let Some(tag) = self.next_tag {
-            self.write_head(tag, 0xA)?
-        }
-        Ok(self)
-    }
-    fn serialize_struct_variant(
-        self,
-        _: &'static str,
-        _: u32,
-        _: &'static str,
-        _: usize,
-    ) -> Result<Self::SerializeStructVariant> {
         todo!()
     }
 }
@@ -300,7 +273,7 @@ impl<W: std::io::Write> ser::SerializeMap for &mut Serializer<W> {
 }
 
 impl<W: std::io::Write> Serializer<W> {
-    fn write_head(&mut self, tag: u8, typ: u8) -> Result<()> {
+    fn write_head(&mut self, tag: u8, typ: u8) -> std::io::Result<()> {
         if tag < 15 {
             let header = (tag << 4) | typ;
             self.writer.write_all(&[header])?;
@@ -315,8 +288,7 @@ impl<W: std::io::Write> Serializer<W> {
         let tag = self.next_tag.take().unwrap_or(0);
 
         match v {
-            0 => self.writer.write_all(&[(tag << 4) | 12]),
-
+            0 => self.write_head(tag, 12),
             n if n >= i8::MIN as i64 && n <= i8::MAX as i64 => {
                 self.write_head(tag, 0)?;
                 self.writer.write_all(&(n as i8).to_be_bytes())
@@ -390,7 +362,7 @@ fn test_struct() -> Result<()> {
 
 #[test]
 fn test_literal() -> Result<()> {
-    let mut data = HashMap::new();
+    let mut data = std::collections::HashMap::new();
     data.insert("v1", vec![12, 34]);
     let serialized = crate::to_vec(&data)?;
     println!("{:?}", serialized);
