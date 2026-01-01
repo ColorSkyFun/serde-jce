@@ -28,7 +28,7 @@ impl<W: Write> ser::Serializer for &mut Serializer<W> {
     type SerializeStruct = Self;
     type SerializeMap = Self;
 
-    type SerializeTuple = ser::Impossible<(), Self::Error>;
+    type SerializeTuple = Self;
     type SerializeTupleStruct = ser::Impossible<(), Self::Error>;
     type SerializeTupleVariant = ser::Impossible<(), Self::Error>;
     type SerializeStructVariant = ser::Impossible<(), Self::Error>;
@@ -151,10 +151,10 @@ impl<W: Write> ser::Serializer for &mut Serializer<W> {
         todo!()
     }
     fn serialize_none(self) -> Result<()> {
-        todo!()
+        Ok(())
     }
-    fn serialize_some<T: ?Sized + Serialize>(self, _: &T) -> Result<()> {
-        todo!()
+    fn serialize_some<T: ?Sized + Serialize>(self, v: &T) -> Result<()> {
+        v.serialize(self)
     }
     fn serialize_unit(self) -> Result<()> {
         todo!()
@@ -177,8 +177,8 @@ impl<W: Write> ser::Serializer for &mut Serializer<W> {
     ) -> Result<()> {
         todo!()
     }
-    fn serialize_tuple(self, _: usize) -> Result<Self::SerializeTuple> {
-        todo!()
+    fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple> {
+        self.serialize_seq(Some(len))
     }
     fn serialize_tuple_struct(
         self,
@@ -223,6 +223,24 @@ impl<W: std::io::Write> ser::SerializeStruct for &mut Serializer<W> {
 }
 
 impl<W: std::io::Write> ser::SerializeSeq for &mut Serializer<W> {
+    type Error = Error;
+    type Ok = ();
+
+    fn serialize_element<T>(&mut self, value: &T) -> std::result::Result<(), Self::Error>
+    where
+        T: ?Sized + Serialize,
+    {
+        self.next_tag = Some(self.index);
+        self.index += 1;
+        value.serialize(&mut **self)?;
+        Ok(())
+    }
+    fn end(self) -> Result<()> {
+        Ok(())
+    }
+}
+
+impl<W: std::io::Write> ser::SerializeTuple for &mut Serializer<W> {
     type Error = Error;
     type Ok = ();
 

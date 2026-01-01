@@ -1,4 +1,4 @@
-use serde::ser;
+use serde::{de, ser};
 use std::fmt::Display;
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -10,6 +10,12 @@ pub enum Error {
 }
 
 impl ser::Error for Error {
+    fn custom<T: Display>(msg: T) -> Self {
+        Error::Message(msg.to_string())
+    }
+}
+
+impl de::Error for Error {
     fn custom<T: Display>(msg: T) -> Self {
         Error::Message(msg.to_string())
     }
