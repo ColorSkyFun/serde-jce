@@ -342,11 +342,13 @@ impl<'de, R: Read> de::Deserializer<'de> for &mut Deserializer<R> {
     {
         todo!()
     }
-    fn deserialize_ignored_any<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_ignored_any<V>(self, visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        todo!()
+        let typ = self.current_type.unwrap();
+        self.skip_type(typ)?;
+        visitor.visit_unit()
     }
     fn deserialize_any<V>(self, _visitor: V) -> Result<V::Value>
     where
@@ -482,6 +484,71 @@ impl<R: Read> Deserializer<R> {
         }
     }
 
+    fn skip_type(&mut self, typ: u8) -> Result<()> {
+        match typ {
+            0 => {
+                self.read_u8()?;
+            }
+            1 => {
+                self.read_u16()?;
+            }
+            2 => {
+                self.read_u32()?;
+            }
+            3 => {
+                self.read_u64()?;
+            }
+            4 => {
+                self.read_f32()?;
+            }
+            5 => {
+                self.read_f64()?;
+            }
+            6 => {
+                let len = self.read_u8()? as u64;
+                self.ignore_bytes(len)?;
+            }
+            7 => {
+                let len = self.read_u32()? as u64;
+                self.ignore_bytes(len)?;
+            }
+            8 => {
+                let len = self.get_raw_number()?;
+                for _ in 0..len * 2 {
+                    let (_, t) = self.next_header()?;
+                    self.skip_type(t)?;
+                }
+            }
+            9 => {
+                let len = self.get_raw_number()?;
+                for _ in 0..len {
+                    let (_, t) = self.next_header()?;
+                    self.skip_type(t)?;
+                }
+            }
+            10 => loop {
+                let (_, t) = self.next_header()?;
+                if t == 11 {
+                    break;
+                }
+                self.skip_type(t)?;
+            },
+            11 | 12 => {}
+            13 => {
+                let _ = self.next_header()?;
+                let len = self.get_raw_number()? as u64;
+                self.ignore_bytes(len)?;
+            }
+            _ => return Err(Error::Message(format!("Unknown type to skip: {}", typ))),
+        }
+        Ok(())
+    }
+
+    fn ignore_bytes(&mut self, len: u64) -> Result<()> {
+        std::io::copy(&mut self.reader.by_ref().take(len), &mut std::io::sink())?;
+        Ok(())
+    }
+
     pub fn deserialize_all(&mut self) -> Result<std::collections::BTreeMap<u8, Value>> {
         let mut root = std::collections::BTreeMap::new();
 
@@ -569,6 +636,7 @@ impl<R: Read> Deserializer<R> {
 
         Ok(f64::from_be_bytes(buf))
     }
+    /// 读整型，消耗tag
     fn get_raw_number(&mut self) -> Result<i64> {
         let (_tag, typ) = self.next_header()?;
         match typ {
@@ -580,6 +648,8 @@ impl<R: Read> Deserializer<R> {
             _ => Err(Error::Message(format!("Expected number type, got {}", typ))),
         }
     }
+
+    /// 读整型，不消耗tag
     fn get_number(&mut self) -> Result<i64> {
         let typ = self
             .current_type
